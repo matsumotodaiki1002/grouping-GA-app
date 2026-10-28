@@ -7,10 +7,12 @@ import os
 
 from flask import Flask, render_template, request
 
-from ga import run_ga
+from ga import balanced_group_sizes, run_ga
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
+# 60人の上三角（1770ペア）と人数設定をmultipartフォームで受け取れるようにする。
+app.config["MAX_FORM_PARTS"] = 4096
 
 
 def _number(value: str, label: str) -> float:
@@ -65,26 +67,48 @@ def index():
     return render_template("index.html")
 
 
+@app.post("/edit")
+def edit():
+    return render_template("index.html", form=request.form)
+
+
 @app.post("/optimize")
 def optimize():
     try:
-        names = _parse_names(request.form.get("names", ""))
-        if not 2 <= len(names) <= 60:
+        raw_names = request.form.get("names", "")
+        names = _parse_names(raw_names)
+        member_count = int(request.form.get("participant_count", len(names)))
+        if not 2 <= member_count <= 60:
             raise ValueError("参加者は2〜60名で入力してください。")
+        if not names:
+            names = [f"参加者{index + 1}" for index in range(member_count)]
+        if len(names) != member_count:
+            raise ValueError(f"参加者数は{member_count}名ですが、名前が{len(names)}名分あります。名前の数を合わせるか、名前欄を空にしてください。")
         group_count = int(request.form.get("group_count", "0"))
-        group_size = int(request.form.get("group_size", "0"))
-        if group_count < 1 or group_size < 1:
-            raise ValueError("班数と1班あたりの人数は1以上にしてください。")
-        if len(names) != group_count * group_size:
-            raise ValueError("参加者数は、班数 × 1班あたりの人数と一致させてください。")
+        if not 1 <= group_count <= member_count:
+            raise ValueError("班数は1以上、参加者数以下にしてください。")
+        mode = request.form.get("allocation_mode", "auto")
+        if mode == "custom":
+            try:
+                sizes = [int(value) for value in request.form.getlist("group_sizes")]
+            except ValueError:
+                raise ValueError("各班の人数は1以上の整数にしてください。") from None
+            if len(sizes) != group_count or any(size < 1 for size in sizes):
+                raise ValueError("すべての班に1以上の人数を指定してください。")
+            if sum(sizes) != member_count:
+                raise ValueError(f"各班の合計は{sum(sizes)}名です。参加者{member_count}名と一致させてください。")
+        elif mode == "auto":
+            sizes = balanced_group_sizes(member_count, group_count)
+        else:
+            raise ValueError("人数の割り振り方法を選択してください。")
 
         upload = request.files.get("matrix_csv")
         matrix = _matrix_from_csv(upload, names) if upload and upload.filename else _matrix_from_form(len(names))
         seed_raw = request.form.get("seed", "").strip()
         seed = int(seed_raw) if seed_raw else None
-        result = run_ga(matrix, group_count, group_size, seed=seed)
+        result = run_ga(matrix, group_count, group_sizes=sizes, seed=seed)
         groups = [[names[index] for index in group] for group in result.groups]
-        return render_template("result.html", groups=groups, score=result.score, seed=seed, names="\n".join(names), group_count=group_count, group_size=group_size, matrix=matrix)
+        return render_template("result.html", groups=groups, score=result.score, seed=seed, names=raw_names, group_count=group_count, group_sizes=sizes, allocation_mode=mode, participant_count=member_count, matrix=matrix)
     except (ValueError, TypeError) as error:
         return render_template("index.html", error=str(error), form=request.form), 400
 

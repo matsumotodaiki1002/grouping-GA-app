@@ -3,28 +3,49 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Grouping GA</title>
+  <title>Grouping GA | 班分けの設定</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='ui.css') }}">
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </head>
 <body>
-  <header class="hero">
-    <nav><a class="brand" href="/">Grouping GA</a><span>班分け最適化ツール</span></nav>
-    <div class="hero-copy"><p class="eyebrow">GENETIC GROUPING</p><h1>相性を、いい班分けに。</h1><p>参加者同士の相性を入力すると、遺伝的アルゴリズムが班内スコアの高い組み合わせを探索します。</p></div>
+  <header class="setup-header">
+    <nav><a class="brand" href="/">Grouping GA</a><span>相性を考慮した班分け</span></nav>
+    <div class="setup-heading"><h1>まずは、何人を何班に分けますか？</h1><p>人数と班の構成を決めてから、参加者の相性を入力します。</p></div>
   </header>
-  <main>
+  <main class="setup-main">
     {% if error %}<div class="alert" role="alert"><strong>入力を確認してください</strong><span>{{ error }}</span></div>{% endif %}
     <form action="{{ url_for('optimize') }}" method="post" enctype="multipart/form-data" id="ga-form">
-      <section class="card"><div class="step">01</div><div class="section-title"><h2>参加者と班の条件</h2><p>1行に1名ずつ入力してください。</p></div>
-        <div class="form-grid"><label class="wide">参加者名<textarea id="names" name="names" rows="8" required placeholder="佐藤\n鈴木\n高橋">{{ form.names if form else '' }}</textarea></label>
-          <div class="fields"><label>班数<input id="group-count" name="group_count" type="number" min="1" value="{{ form.group_count if form else 3 }}" required></label><label>1班あたり<input id="group-size" name="group_size" type="number" min="1" value="{{ form.group_size if form else 3 }}" required></label><label>乱数シード <span class="optional">任意</span><input name="seed" type="number" value="{{ form.seed if form else 42 }}"></label><button type="button" class="secondary" id="sample">サンプルを使う</button></div>
-        </div><p id="count-status" class="status"></p>
+      <section class="card setup-card" aria-labelledby="setup-title">
+        <div class="section-title"><span class="section-label">STEP 01</span><h2 id="setup-title">人数・班の設定</h2></div>
+        <div class="count-controls">
+          <label for="participant-count">分ける参加者の人数<div class="number-with-unit"><input id="participant-count" name="participant_count" type="number" min="2" max="60" value="{{ form.get('participant_count', 11) if form else 11 }}" required><span>人</span></div><small>2〜60人</small></label>
+          <span class="count-arrow" aria-hidden="true">→</span>
+          <label for="group-count">作る班の数<div class="number-with-unit"><input id="group-count" name="group_count" type="number" min="1" max="60" value="{{ form.get('group_count', 3) if form else 3 }}" required><span>班</span></div><small>参加者数以下で指定</small></label>
+        </div>
+        {% set mode = form.get('allocation_mode', 'auto') if form else 'auto' %}
+        <fieldset class="allocation-options"><legend>各班への人数の割り振り</legend>
+          <label><input type="radio" name="allocation_mode" value="auto" {% if mode != 'custom' %}checked{% endif %}><span>おまかせで割り振る<small>人数差を1人以内にします。割り切れなくてもOK。</small></span></label>
+          <label><input type="radio" name="allocation_mode" value="custom" {% if mode == 'custom' %}checked{% endif %}><span>班ごとに人数を指定<small>例：2人・4人・5人など、自由に設定できます。</small></span></label>
+        </fieldset>
+        <div id="group-sizes" class="group-size-grid" aria-label="各班の人数"></div>
+        <div id="allocation-summary" class="allocation-summary" aria-live="polite"><strong id="allocation-description">11人 → 3班（3人・4人・4人）</strong><span id="count-status">人数を割り振っています</span></div>
       </section>
-      <section class="card"><div class="step">02</div><div class="section-title"><h2>相性を入力</h2><p>正：同じ班にしたい／負：離したい／0：指定なし。上三角だけ入力できます。</p></div>
-        <div class="upload"><label>CSVから読み込む<input type="file" name="matrix_csv" accept=".csv,text/csv"></label><a href="{{ url_for('static', filename='sample_matrix.csv') }}" download>サンプルCSV</a></div>
-        <div id="matrix-wrap" class="matrix-wrap"><p class="empty">参加者名を入力すると、相性表がここに表示されます。</p></div>
+      <section class="card" aria-labelledby="names-title">
+        <div class="section-title"><span class="section-label">STEP 02</span><h2 id="names-title">参加者名 <span class="optional">任意</span></h2><p>1行に1名ずつ入力。空欄なら「参加者1、参加者2…」で班分けできます。</p></div>
+        <div class="names-tools"><label for="names">参加者名一覧</label><button type="button" class="secondary compact" id="sample">9人のサンプルを使う</button></div>
+        <textarea id="names" name="names" rows="4" placeholder="佐藤&#10;鈴木&#10;高橋" aria-describedby="names-status">{{ form.get('names', '') if form else '' }}</textarea>
+        <p id="names-status" class="status"></p>
       </section>
-      <div class="action"><button class="primary" type="submit">最適な班分けを生成 <span>→</span></button><p>入力データは保存されません</p></div>
+      <section class="card" aria-labelledby="matrix-title">
+        <div class="section-title"><span class="section-label">STEP 03</span><h2 id="matrix-title">相性を入力</h2><p>正：同じ班にしたい／負：離したい／0：指定なし。上三角だけ入力できます。</p></div>
+        <div class="upload"><label>相性行列をCSVから読み込む<input type="file" name="matrix_csv" accept=".csv,text/csv"></label><a href="{{ url_for('static', filename='sample_matrix.csv') }}" download>サンプルCSV</a></div>
+        <p class="input-help">CSVを選ぶと下の表より優先します。行・列の順序を参加者名の順序に合わせてください。</p>
+        <div id="matrix-wrap" class="matrix-wrap"></div>
+      </section>
+      <section class="card run-settings"><label for="seed">乱数シード <span class="optional">任意</span><input id="seed" name="seed" type="number" value="{{ form.get('seed', 42) if form else 42 }}"><small>同じ値なら同じ結果を再現。空欄なら毎回ランダム。</small></label></section>
+      <div class="action"><button class="primary" id="run-button" type="submit">この条件で班分けする <span>→</span></button><p id="submit-status" role="status"></p><p>入力データは保存されません</p></div>
     </form>
   </main>
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script id="initial-form" type="application/json">{{ (form.to_dict(flat=False) if form else {}) | tojson }}</script>
 </body></html>

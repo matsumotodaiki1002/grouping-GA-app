@@ -1,4 +1,14 @@
-<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>班分け結果 | Grouping GA</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"></head>
-<body><header class="result-hero"><nav><a class="brand" href="/">Grouping GA</a><span>最適化結果</span></nav><div><p class="eyebrow">OPTIMIZATION COMPLETE</p><h1>班分けができました。</h1><div class="score"><span>総合評価スコア</span><strong>{{ '%g'|format(score) }}</strong></div></div></header>
-<main><section class="groups">{% for group in groups %}<article class="group-card"><div class="group-number">{{ '%02d'|format(loop.index) }}</div><h2>班 {{ loop.index }}</h2><ul>{% for member in group %}<li><span>{{ loop.index }}</span>{{ member }}</li>{% endfor %}</ul></article>{% endfor %}</section>
-<form action="{{ url_for('optimize') }}" method="post" class="result-actions"><input type="hidden" name="names" value="{{ names }}"><input type="hidden" name="group_count" value="{{ group_count }}"><input type="hidden" name="group_size" value="{{ group_size }}">{% if seed is not none %}<input type="hidden" name="seed" value="{{ seed }}">{% endif %}{% for row in range(matrix|length) %}{% for col in range(row + 1, matrix|length) %}<input type="hidden" name="pair_{{ row }}_{{ col }}" value="{{ matrix[row][col] }}">{% endfor %}{% endfor %}<button class="primary" type="submit">同じ条件でもう一度実行</button><a class="secondary link-button" href="/">条件を変更する</a></form><p class="note">同じシードでは同じ結果になります。別案を見るには条件画面でシードを変更してください。</p></main></body></html>
+<!doctype html>
+<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>班分け結果 | Grouping GA</title><link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}"><link rel="stylesheet" href="{{ url_for('static', filename='ui.css') }}"></head>
+<body><header class="result-hero"><nav><a class="brand" href="/">Grouping GA</a><span>班分け結果</span></nav><div><p class="eyebrow">OPTIMIZATION COMPLETE</p><h1>班分けができました。</h1><div class="score"><span>総合評価スコア</span><strong>{{ '%g'|format(score) }}</strong></div></div></header>
+<main>
+  <p class="result-summary">{{ participant_count }}人 → {{ group_count }}班（{% for size in group_sizes %}{{ size }}人{% if not loop.last %}・{% endif %}{% endfor %}）</p>
+  <section class="groups">{% for group in groups %}<article class="group-card"><div class="group-number">{{ '%02d'|format(loop.index) }}</div><h2>班 {{ loop.index }} <span class="member-count">{{ group|length }}人</span></h2><ul>{% for member in group %}<li><span>{{ loop.index }}</span>{{ member }}</li>{% endfor %}</ul></article>{% endfor %}</section>
+  <form action="{{ url_for('optimize') }}" method="post" class="result-actions">
+    <input type="hidden" name="names" value="{{ names }}"><input type="hidden" name="participant_count" value="{{ participant_count }}"><input type="hidden" name="group_count" value="{{ group_count }}"><input type="hidden" name="allocation_mode" value="{{ allocation_mode }}">
+    {% for size in group_sizes %}<input type="hidden" name="group_sizes" value="{{ size }}">{% endfor %}
+    <input type="hidden" name="seed" value="{{ seed if seed is not none else '' }}">
+    {% for row in range(matrix|length) %}{% for col in range(row + 1, matrix|length) %}<input type="hidden" name="pair_{{ row }}_{{ col }}" value="{{ matrix[row][col] }}">{% endfor %}{% endfor %}
+    <button class="primary" type="submit">同じ条件でもう一度実行</button><button class="secondary" type="submit" formaction="{{ url_for('edit') }}">条件を変更する</button>
+  </form><p class="note">同じシードでは同じ結果になります。別案を見るには条件画面でシードを変更してください。</p>
+</main></body></html>

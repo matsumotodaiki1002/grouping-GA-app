@@ -14,10 +14,42 @@ class GAResult:
     generations: int
 
 
-def calculate_score(order: list[int], matrix: list[list[float]], group_size: int) -> float:
+def balanced_group_sizes(member_count: int, group_count: int) -> list[int]:
+    """端数を後ろの班に割り当てる。11名・3班なら3, 4, 4。"""
+    if group_count < 1 or group_count > member_count:
+        raise ValueError("班数は1以上、参加者数以下にしてください。")
+    base, remainder = divmod(member_count, group_count)
+    return [base] * (group_count - remainder) + [base + 1] * remainder
+
+
+def _resolve_group_sizes(member_count: int, group_size: int | list[int]) -> list[int]:
+    if isinstance(group_size, int):
+        if group_size < 1 or member_count % group_size:
+            raise ValueError("班の人数の合計を参加者数と一致させてください。")
+        sizes = [group_size] * (member_count // group_size)
+    else:
+        sizes = list(group_size)
+    if not sizes or any(type(size) is not int or size < 1 for size in sizes):
+        raise ValueError("各班の人数は1以上の整数にしてください。")
+    if sum(sizes) != member_count:
+        raise ValueError("班の人数の合計を参加者数と一致させてください。")
+    return sizes
+
+
+def _split_groups(order: list[int], sizes: list[int]) -> list[list[int]]:
+    groups = []
+    start = 0
+    for size in sizes:
+        groups.append(order[start : start + size])
+        start += size
+    return groups
+
+
+def calculate_score(order: list[int], matrix: list[list[float]], group_size: int | list[int]) -> float:
+    sizes = _resolve_group_sizes(len(order), group_size)
     score = 0.0
-    for start in range(0, len(order), group_size):
-        for left, right in combinations(order[start : start + group_size], 2):
+    for group in _split_groups(order, sizes):
+        for left, right in combinations(group, 2):
             score += matrix[left][right]
     return score
 
@@ -49,18 +81,25 @@ def _tournament(population: list[list[int]], scores: list[float], rng: random.Ra
 def run_ga(
     matrix: list[list[float]],
     group_count: int,
-    group_size: int,
+    group_size: int | None = None,
     *,
+    group_sizes: list[int] | None = None,
     population_size: int = 80,
     generations: int = 180,
     mutation_rate: float = 0.2,
     seed: int | None = None,
 ) -> GAResult:
     member_count = len(matrix)
-    if member_count != group_count * group_size:
-        raise ValueError("参加者数は、班数 × 1班あたりの人数と一致させてください。")
     if member_count < 2:
         raise ValueError("参加者は2名以上必要です。")
+    if group_sizes is not None:
+        sizes = _resolve_group_sizes(member_count, group_sizes)
+    elif group_size is not None:
+        sizes = _resolve_group_sizes(member_count, group_size)
+    else:
+        sizes = balanced_group_sizes(member_count, group_count)
+    if len(sizes) != group_count:
+        raise ValueError("指定した班の人数は、班数と同じ個数にしてください。")
     if population_size < 4 or generations < 1:
         raise ValueError("GAの実行条件が不正です。")
 
@@ -73,10 +112,10 @@ def run_ga(
         population.append(individual)
 
     best = population[0].copy()
-    best_score = calculate_score(best, matrix, group_size)
+    best_score = calculate_score(best, matrix, sizes)
 
     for _ in range(generations):
-        scores = [calculate_score(individual, matrix, group_size) for individual in population]
+        scores = [calculate_score(individual, matrix, sizes) for individual in population]
         elite_index = max(range(len(population)), key=scores.__getitem__)
         if scores[elite_index] > best_score:
             best, best_score = population[elite_index].copy(), scores[elite_index]
@@ -90,5 +129,5 @@ def run_ga(
             next_population.append(child)
         population = next_population
 
-    groups = [best[start : start + group_size] for start in range(0, member_count, group_size)]
+    groups = _split_groups(best, sizes)
     return GAResult(groups=groups, score=best_score, generations=generations)
